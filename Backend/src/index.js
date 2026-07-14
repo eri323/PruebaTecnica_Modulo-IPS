@@ -6,6 +6,7 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth.routes');
 const epsRoutes = require('./routes/eps.routes');
 const patientRoutes = require('./routes/patient.routes');
+const dashboardRoutes = require('./routes/dashboard.routes');
 const { verifyToken } = require('./middleware/auth.middleware');
 
 const app = express();
@@ -26,6 +27,9 @@ app.use('/eps', verifyToken, epsRoutes);
 
 // CRUD de pacientes (protegido).
 app.use('/patients', verifyToken, patientRoutes);
+
+// Indicadores del dashboard (protegido).
+app.use('/dashboard', verifyToken, dashboardRoutes);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
