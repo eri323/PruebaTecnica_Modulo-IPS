@@ -1,0 +1,52 @@
+CREATE TYPE rol_usuario AS ENUM ('ADMIN', 'OPERADOR');
+CREATE TYPE prioridad_paciente AS ENUM ('Alta', 'Media', 'Baja');
+CREATE TYPE estado_paciente AS ENUM ('Pendiente', 'En atención', 'Atendido');
+CREATE TYPE tipo_doc AS ENUM ('CC', 'TI', 'CE', 'PA');
+
+CREATE TABLE eps (
+  eps_codigo VARCHAR(10) PRIMARY KEY,
+  eps_nombre VARCHAR(100) NOT NULL
+);
+
+CREATE TABLE usuarios (
+  usuario_id SERIAL PRIMARY KEY,
+  usuario VARCHAR(50) UNIQUE NOT NULL,
+  nombre VARCHAR(150) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  rol rol_usuario NOT NULL,
+  activo BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE pacientes (
+  paciente_id SERIAL PRIMARY KEY,
+  tipo_documento tipo_doc NOT NULL,
+  documento VARCHAR(20) NOT NULL,
+  nombre_completo VARCHAR(150) NOT NULL,
+  fecha_nacimiento DATE NOT NULL CHECK (fecha_nacimiento <= CURRENT_DATE),
+  genero VARCHAR(30) NOT NULL,
+  telefono VARCHAR(20) NOT NULL,
+  correo VARCHAR(150),
+  eps_codigo VARCHAR(10) NOT NULL REFERENCES eps(eps_codigo),
+  ciudad VARCHAR(100),
+  prioridad prioridad_paciente NOT NULL,
+  estado estado_paciente NOT NULL DEFAULT 'Pendiente',
+  fecha_creacion TIMESTAMP DEFAULT NOW(),
+  fecha_actualizacion TIMESTAMP DEFAULT NOW(),
+  UNIQUE (tipo_documento, documento)
+);
+
+-- Extensiones necesarias para la búsqueda por nombre:
+-- unaccent para ignorar tildes, pg_trgm para el índice GIN de coincidencia parcial.
+CREATE EXTENSION IF NOT EXISTS unaccent;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- unaccent() es STABLE y Postgres no permite indexar expresiones no inmutables:
+-- se envuelve en una función IMMUTABLE para poder construir el índice sobre ella.
+CREATE OR REPLACE FUNCTION f_unaccent(text)
+RETURNS text AS $$ SELECT public.unaccent('public.unaccent', $1) $$
+LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT;
+
+CREATE INDEX idx_pacientes_nombre_unaccent
+  ON pacientes USING gin (f_unaccent(nombre_completo) gin_trgm_ops);
+CREATE INDEX idx_pacientes_documento ON pacientes(documento);
+CREATE INDEX idx_pacientes_estado_prioridad ON pacientes(estado, prioridad);
