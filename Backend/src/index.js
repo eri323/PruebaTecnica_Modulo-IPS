@@ -4,6 +4,9 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const authRoutes = require('./routes/auth.routes');
+const epsRoutes = require('./routes/eps.routes');
+const patientRoutes = require('./routes/patient.routes');
+const { verifyToken } = require('./middleware/auth.middleware');
 
 const app = express();
 
@@ -17,6 +20,12 @@ app.get('/', (req, res) => {
 
 // Rutas de autenticación: login y consulta del usuario autenticado.
 app.use('/auth', authRoutes);
+
+// Catálogo de EPS (protegido).
+app.use('/eps', verifyToken, epsRoutes);
+
+// CRUD de pacientes (protegido).
+app.use('/patients', verifyToken, patientRoutes);
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
