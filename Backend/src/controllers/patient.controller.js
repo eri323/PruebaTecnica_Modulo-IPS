@@ -3,9 +3,12 @@
 const pool = require('../config/db');
 
 // Select base reutilizado por list/getById/create/update: siempre trae el nombre de la EPS.
+// fecha_nacimiento se devuelve como texto YYYY-MM-DD: si viaja como DATE, node-pg la convierte
+// a Date y el JSON sale en UTC, corriendo el día en clientes con otra zona horaria.
 const SELECT_CON_EPS = `
   SELECT p.paciente_id, p.tipo_documento, p.documento, p.nombre_completo,
-         p.fecha_nacimiento, p.genero, p.telefono, p.correo, p.eps_codigo,
+         to_char(p.fecha_nacimiento, 'YYYY-MM-DD') AS fecha_nacimiento,
+         p.genero, p.telefono, p.correo, p.eps_codigo,
          e.eps_nombre, p.ciudad, p.prioridad, p.estado,
          p.fecha_creacion, p.fecha_actualizacion
   FROM pacientes p
@@ -22,7 +25,11 @@ async function list(req, res) {
 
   if (search) {
     valores.push(`%${search}%`);
-    condiciones.push(`(p.nombre_completo ILIKE $${valores.length} OR p.documento ILIKE $${valores.length})`);
+    // f_unaccent en ambos lados: el operador escribe "Maria" y debe encontrar a "María".
+    // El documento son dígitos, no necesita normalización.
+    condiciones.push(
+      `(f_unaccent(p.nombre_completo) ILIKE f_unaccent($${valores.length}) OR p.documento ILIKE $${valores.length})`
+    );
   }
   if (estado) {
     valores.push(estado);

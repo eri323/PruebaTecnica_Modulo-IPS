@@ -1,5 +1,5 @@
 // Backend/src/validators/patient.validator.js
-// Esquemas de validación para pacientes: creación/edición y query de listado.
+// Esquemas de validación para pacientes: creación, edición, query de listado e id de ruta.
 const { z } = require('zod');
 
 const TIPOS_DOCUMENTO = ['CC', 'TI', 'CE', 'PA'];
@@ -7,8 +7,9 @@ const GENEROS = ['Femenino', 'Masculino', 'Otro', 'Prefiere no informar'];
 const PRIORIDADES = ['Alta', 'Media', 'Baja'];
 const ESTADOS = ['Pendiente', 'En atención', 'Atendido'];
 
-// Esquema compartido por POST y PUT: reemplazo completo del paciente.
-const patientSchema = z.object({
+// Campos comunes a crear y editar. El estado se define aparte en cada esquema
+// porque su comportamiento cambia: opcional al crear, obligatorio al editar.
+const camposBase = {
   tipo_documento: z.enum(TIPOS_DOCUMENTO),
   documento: z.string().min(1).max(20),
   nombre_completo: z.string().min(1).max(150),
@@ -23,19 +24,36 @@ const patientSchema = z.object({
   eps_codigo: z.string().min(1),
   ciudad: z.string().optional(),
   prioridad: z.enum(PRIORIDADES),
+};
+
+// Al crear, un paciente nuevo entra como 'Pendiente' si no se especifica otra cosa.
+const createPatientSchema = z.object({
+  ...camposBase,
   estado: z.enum(ESTADOS).optional().default('Pendiente'),
 });
 
-// Middleware: valida el body contra patientSchema (usado por POST y PUT).
-function validatePatient(req, res, next) {
-  const resultado = patientSchema.safeParse(req.body);
-  if (!resultado.success) {
-    const mensaje = resultado.error.issues.map((i) => i.message).join(', ');
-    return res.status(400).json({ error: mensaje });
-  }
-  req.body = resultado.data;
-  next();
+// Al editar, el estado es obligatorio: con un default, un PUT que omitiera el campo
+// devolvería a 'Pendiente' un paciente que ya estaba en atención (pérdida de datos silenciosa).
+const updatePatientSchema = z.object({
+  ...camposBase,
+  estado: z.enum(ESTADOS),
+});
+
+// Construye un middleware que valida req.body contra el esquema dado.
+function validarBody(esquema) {
+  return (req, res, next) => {
+    const resultado = esquema.safeParse(req.body);
+    if (!resultado.success) {
+      const mensaje = resultado.error.issues.map((i) => i.message).join(', ');
+      return res.status(400).json({ error: mensaje });
+    }
+    req.body = resultado.data;
+    next();
+  };
 }
+
+const validateCreatePatient = validarBody(createPatientSchema);
+const validateUpdatePatient = validarBody(updatePatientSchema);
 
 // Esquema de query params para GET /patients (listado paginado con filtros).
 const listQuerySchema = z.object({
@@ -58,4 +76,17 @@ function validateListQuery(req, res, next) {
   next();
 }
 
-module.exports = { validatePatient, validateListQuery };
+// Middleware: sin esto, un :id no numérico llega al query de Postgres y revienta con un 500 en HTML.
+function validateId(req, res, next) {
+  if (!/^[1-9]\d*$/.test(req.params.id)) {
+    return res.status(400).json({ error: 'Id de paciente inválido' });
+  }
+  next();
+}
+
+module.exports = {
+  validateCreatePatient,
+  validateUpdatePatient,
+  validateListQuery,
+  validateId,
+};
